@@ -378,7 +378,7 @@ def _gen_shape(
     main_image = image if not MV_MODE else image['front']
     return mesh, main_image, save_folder, stats, seed
 
-@spaces.GPU(duration=130)
+@spaces.GPU(duration=180)
 def generation_all(
     caption=None,
     image=None,
