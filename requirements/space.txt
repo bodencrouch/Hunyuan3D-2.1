@@ -1,28 +1,22 @@
 # Hugging Face Spaces inject gradio, spaces, uvicorn, websockets, and a torch upper bound.
 # Keep the Space-specific requirements focused on the serving/runtime slice to avoid
 # resolver conflicts with platform-managed packages and unnecessary optional extras.
-# The Space runtime compiles the mesh painter helper via pybind11, but it does not
-# use Blender-backed GLB export or source-build the rasterizer on the supported
-# Python 3.10 runtime.
-pybind11>=2.13.4
+# ZeroGPU startup depends on CUDA-backed torch internals during `import spaces`,
+# so do not force the CPU-only PyTorch wheel index here.
+# Keep Space-only startup trimmed to the default shape path; optional texture and
+# heavy mesh-cleanup tooling is loaded lazily or skipped in fallback mode.
 
 accelerate>=1.1.1
-configargparse>=1.7
 diffusers>=0.30.0
 einops>=0.8.0
 huggingface-hub>=0.30.2
 imageio>=2.36.0
 numpy>=1.24.4
 omegaconf>=2.3.0
-onnxruntime>=1.16.3
-opencv-python-headless>=4.11.0.86
-pandas>=2.2.2
-packaging>=24,<26
-pillow>=10,<12
-psutil>=6.0.0
-pymeshlab>=2022.2.post3
+opencv-python-headless>=5.0.0.93
+packaging>=24,<27
+pillow>=10,<13
 pyyaml>=6.0.2
-rembg>=2.0.65
 safetensors>=0.4.4
 scikit-image>=0.24.0
 scipy>=1.14.1
@@ -30,7 +24,6 @@ timm>=1.0,<2
 tqdm>=4.66.5
 transformers>=4.46.0
 trimesh>=4.4.7
-xatlas>=0.0.9
 
 torch>=2.5.1
 torchvision>=0.20.1

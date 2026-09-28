@@ -27,8 +27,9 @@ from pathlib import Path
 from hy3dpaint.runtime_compat import exit_if_unsupported_runtime_python
 from hy3dpaint.bootstrap import (
     apply_torchvision_compatibility_fix,
-    prepare_runtime_environment,
+    prepare_space_runtime_environment,
 )
+from hy3dpaint.space_runtime_deps import load_shape_runtime_components
 
 exit_if_unsupported_runtime_python()
 
@@ -42,9 +43,14 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from hy3dshape.utils import logger  # noqa: E402
 from hy3dpaint.runtime_profile import (  # noqa: E402
+    default_shape_model_path,
     format_runtime_profile,
     get_runtime_notice,
     resolve_runtime_profile,
+    resolve_shape_model_selection,
+    resolve_shape_subfolder,
+    should_use_spaces_gpu,
+    zero_gpu_startup_enabled,
 )
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -66,13 +72,18 @@ def _cli_flag_present(flag):
 
 HF_SPACE = _running_in_huggingface_space()
 
-try:
-    import spaces as _spaces_runtime
-except ImportError:
-    _spaces_runtime = None
+if (
+    HF_SPACE
+    and os.getenv("SPACES_ZERO_DEVICE_API_URL")
+    and not os.getenv("SPACES_ZERO_GPU")
+):
+    os.environ["SPACES_ZERO_GPU"] = "true"
 
+ZERO_GPU_STARTUP_ENABLED = HF_SPACE and bool(zero_gpu_startup_enabled(os.environ))
 
-if _spaces_runtime is None:
+if HF_SPACE:
+    import spaces
+else:
 
     class spaces:
         class GPU:
@@ -85,8 +96,6 @@ if _spaces_runtime is None:
         @staticmethod
         def is_zerogpu():
             return False
-else:
-    spaces = _spaces_runtime
 
 
 try:
@@ -102,6 +111,16 @@ RUNTIME_PROFILE = resolve_runtime_profile(
     has_cuda=torch.cuda.is_available(),
     is_zerogpu=IS_ZEROGPU,
 )
+
+
+def _runtime_gpu(duration=60):
+    if should_use_spaces_gpu(RUNTIME_PROFILE):
+        return spaces.GPU(duration=duration)
+
+    def decorator(func):
+        return func
+
+    return decorator
 
 
 if HF_SPACE:
@@ -120,7 +139,13 @@ if HF_SPACE:
 
     logger.info("Torch version on Spaces startup: %s", torch.__version__)
     logger.info("Resolved runtime profile: %s", format_runtime_profile(RUNTIME_PROFILE))
-    prepare_runtime_environment(CURRENT_DIR, pythonpath, logger=logger)
+    prepare_space_runtime_environment(
+        CURRENT_DIR,
+        pythonpath,
+        in_huggingface_space=HF_SPACE,
+        disable_tex=RUNTIME_PROFILE.disable_tex,
+        logger=logger,
+    )
 
 
 def get_example_img_list():
@@ -291,7 +316,7 @@ def _enable_runtime_cpu_offload(shape_worker, texture_worker=None):
         )
 
 
-@spaces.GPU(duration=60)
+@_runtime_gpu(duration=60)
 def _gen_shape(
     caption=None,
     image=None,
@@ -427,7 +452,7 @@ def _gen_shape(
     return mesh, main_image, save_folder, stats, seed
 
 
-@spaces.GPU(duration=180)
+@_runtime_gpu(duration=180)
 def generation_all(
     caption=None,
     image=None,
@@ -515,7 +540,7 @@ def generation_all(
     )
 
 
-@spaces.GPU(duration=60)
+@_runtime_gpu(duration=60)
 def shape_generation(
     caption=None,
     image=None,
@@ -939,16 +964,21 @@ Fast for very complex cases, Standard seldom use.",
 if __name__ == "__main__":
     import argparse
 
+    default_model_path, default_subfolder = resolve_shape_model_selection(
+        RUNTIME_PROFILE,
+        env=os.environ,
+    )
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model_path",
         type=str,
-        default=os.getenv("HY3D_MODEL_PATH", "tencent/Hunyuan3D-2.1"),
+        default=default_model_path,
     )
     parser.add_argument(
         "--subfolder",
         type=str,
-        default=os.getenv("HY3D_SHAPE_SUBFOLDER", "hunyuan3d-dit-v2-1"),
+        default=default_subfolder,
     )
     parser.add_argument(
         "--texgen_model_path",
@@ -977,6 +1007,12 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     args.enable_flashvdm = False
+    model_path_overridden = _cli_flag_present("--model_path") or (
+        os.getenv("HY3D_MODEL_PATH") is not None
+    )
+    subfolder_overridden = _cli_flag_present("--subfolder") or (
+        os.getenv("HY3D_SHAPE_SUBFOLDER") is not None
+    )
 
     if args.device == "cuda" and not torch.cuda.is_available():
         logger.warning(
@@ -986,12 +1022,26 @@ if __name__ == "__main__":
         args.disable_tex = True
         args.low_vram_mode = True
 
+    if args.device == "cpu" and not model_path_overridden:
+        args.model_path = default_shape_model_path(
+            args.device,
+            is_zerogpu=RUNTIME_PROFILE.is_zerogpu,
+        )
+
+    if not subfolder_overridden:
+        args.subfolder = resolve_shape_subfolder(args.model_path)
+
     logger.info(
         "Launch args resolved to device=%s disable_tex=%s low_vram_mode=%s cache_path=%s",
         args.device,
         args.disable_tex,
         args.low_vram_mode,
         args.cache_path,
+    )
+    logger.info(
+        "Shape model resolved to model_path=%s subfolder=%s",
+        args.model_path,
+        args.subfolder,
     )
 
     if HF_SPACE and args.disable_tex:
@@ -1084,15 +1134,13 @@ if __name__ == "__main__":
     #     t2i_worker = HunyuanDiTPipeline('Tencent-Hunyuan/HunyuanDiT-v1.1-Diffusers-Distilled')
     #     HAS_T2I = True
 
-    from hy3dshape.pipelines import export_to_trimesh
-    from hy3dshape.rembg import BackgroundRemover
-
-    from hy3dshape import (
-        DegenerateFaceRemover,
-        FaceReducer,
-        FloaterRemover,
-        Hunyuan3DDiTFlowMatchingPipeline,
-    )
+    shape_runtime = load_shape_runtime_components(logger=logger)
+    export_to_trimesh = shape_runtime.export_to_trimesh
+    BackgroundRemover = shape_runtime.BackgroundRemover
+    DegenerateFaceRemover = shape_runtime.DegenerateFaceRemover
+    FaceReducer = shape_runtime.FaceReducer
+    FloaterRemover = shape_runtime.FloaterRemover
+    Hunyuan3DDiTFlowMatchingPipeline = shape_runtime.Hunyuan3DDiTFlowMatchingPipeline
 
     rmbg_worker = BackgroundRemover()
     i23d_worker = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
@@ -1128,10 +1176,11 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
 
     demo = build_app()
-    app = gr.mount_gradio_app(app, demo, path="/")
+    app = gr.mount_gradio_app(app, demo, path="/", ssr_mode=False)
 
-    if RUNTIME_PROFILE.is_zerogpu:
-        # for Zerogpu
+    if ZERO_GPU_STARTUP_ENABLED:
+        # Mounted Gradio apps do not go through Blocks.launch, so trigger the
+        # ZeroGPU startup report explicitly when the platform exposes ZeroGPU envs.
         from spaces import zero
 
         zero.startup()
