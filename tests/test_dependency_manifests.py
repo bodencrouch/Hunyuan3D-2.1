@@ -60,24 +60,24 @@ def test_pillow_is_declared_in_root_runtime_manifests():
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
     dependencies = pyproject["project"]["dependencies"]
 
-    assert "pillow>=10,<12" in dependencies
-    assert "pillow>=10,<12" in _read_lines("requirements.txt")
-    assert "pillow>=10,<12" in _read_lines("requirements/base.txt")
-    assert "pillow>=10,<12" in _read_lines("requirements/space.txt")
+    assert "pillow>=10,<13" in dependencies
+    assert "pillow>=10,<13" in _read_lines("requirements.txt")
+    assert "pillow>=10,<13" in _read_lines("requirements/base.txt")
+    assert "pillow>=10,<13" in _read_lines("requirements/space.txt")
 
 
 def test_packaging_is_declared_in_root_runtime_manifests():
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
     dependencies = pyproject["project"]["dependencies"]
 
-    assert "packaging>=24,<26" in dependencies
-    assert "packaging>=24,<26" in _read_lines("requirements.txt")
-    assert "packaging>=24,<26" in _read_lines("requirements/base.txt")
-    assert "packaging>=24,<26" in _read_lines("requirements/space.txt")
+    assert "packaging>=24,<27" in dependencies
+    assert "packaging>=24,<27" in _read_lines("requirements.txt")
+    assert "packaging>=24,<27" in _read_lines("requirements/base.txt")
+    assert "packaging>=24,<27" in _read_lines("requirements/space.txt")
 
 
 def test_pillow_is_declared_in_hy3dshape_standalone_requirements():
-    assert "pillow>=10,<12" in _read_lines("hy3dshape/requirements.txt")
+    assert "pillow>=10,<13" in _read_lines("hy3dshape/requirements.txt")
 
 
 def test_requires_python_matches_runtime_support_envelope():
@@ -112,7 +112,7 @@ def test_gradio_runtime_floor_matches_space_runtime_contract():
 def test_space_requirements_keep_optional_glb_and_build_tooling_out_of_builder_path():
     space_requirements = _read_lines("requirements/space.txt")
 
-    assert "opencv-python-headless>=4.11.0.86" in space_requirements
+    assert "opencv-python-headless>=5.0.0.93" in space_requirements
     assert "-r build.txt" not in space_requirements
     assert not any(line.startswith("basicsr") for line in space_requirements)
     assert not any(line.startswith("bpy") for line in space_requirements)
@@ -162,5 +162,5 @@ def test_space_preloads_only_public_unauthenticated_hub_repos():
     preload_repos = _read_readme_front_matter_list("preload_from_hub")
 
     assert "tencent/Hunyuan3D-2.1" in preload_repos
-    assert "facebook/dinov2-giant" in preload_repos
+    assert "tencent/Hunyuan3D-2mini" in preload_repos
     assert "stabilityai/stable-diffusion-2-1-base" not in preload_repos
