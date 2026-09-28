@@ -19,7 +19,7 @@ jobs:
     build:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
               with:
                   lfs: true
             - name: Stage GitHub Pages artifact
@@ -32,7 +32,7 @@ jobs:
                   cp assets/example_images/jimeng2.png _site/assets/example_images/jimeng2.png
                   cp assets/example_images/jimeng6.png _site/assets/example_images/jimeng6.png
                   cp assets/example_images/qie.png _site/assets/example_images/qie.png
-            - uses: actions/upload-pages-artifact@v3
+            - uses: actions/upload-pages-artifact@v5
               with:
                   path: _site
 
@@ -44,4 +44,4 @@ jobs:
             url: ${{ steps.deployment.outputs.page_url }}
         steps:
             - id: deployment
-              uses: actions/deploy-pages@v4
+              uses: actions/deploy-pages@v5
